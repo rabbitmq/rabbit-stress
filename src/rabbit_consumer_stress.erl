@@ -9,7 +9,7 @@
     {mode, $m, "mode", {atom, sync}, "Run mode. sync - run sequentially, async - run in parallel"},
     {interval, $i, "interval", {integer, 2000}, "Interval between starting parallel runs."},
     {connections, $c, "connections", {integer, 10}, "Number of connections"},
-    {channels, $h, "channels", {integer, 10}, "Number of channels per connection"},
+    {channels, $C, "channels", {integer, 10}, "Number of channels per connection"},
     {queues, $q, "queues", {integer, 10}, "Number of queues per channel"},
     {consumers, $k, "consumers", {integer, 2}, "Number of consumers per queue"},
     {sleep, $s, "sleep", {integer, 2000}, "Time to keep connection alive"},
