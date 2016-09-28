@@ -33,12 +33,16 @@ make escript
 
 To show the tool usage:
 
+Process creation tool:
+
 ```
 ./rabbit_consumer_stress -h
 ```
 
+HTTP API tool:
+
 ```
-./rabbit_consumer_stress -h
+./rabbit_http_stress -h
 ```
 
 Test output will contain execution time statistics for series of test runs.
