@@ -1,4 +1,4 @@
--module(rabbit_connection_churn).
+-module(rabbit_churn).
 -include_lib("amqp_client/include/amqp_client.hrl").
 -compile(export_all).
 
@@ -21,7 +21,8 @@ create_n_queues(Count, Channel) ->
         fun() ->
             QueueName = generate_queue_name(Channel),
             #'queue.declare_ok'{queue = QueueName} =
-                amqp_channel:call(Channel, #'queue.declare'{queue = QueueName}),
+                amqp_channel:call(Channel, #'queue.declare'{queue = QueueName,
+                                                            exclusive = true}),
             QueueName
         end).
 
@@ -59,34 +60,39 @@ generate_queue_name(Channel) ->
                    pid_to_list(Channel) ++
                    integer_to_list(rand:uniform(1000000))).
 
-with_stats(Node, ReportMemory, Loops, Interval, Sleep, Mode, ConnectionType, Nc, Nch, Nq, Ncon) ->
+with_stats(#{runs := Runs,
+             interval := Interval,
+             sleep := Sleep,
+             sync_mode := SyncMode,
+             connection_type := ConnectionType,
+             connections := Connections,
+             channels := Channels,
+             queues := Queues,
+             consumers := Consumers } = Config) ->
+    SyncMsg = case SyncMode of
+        sync  -> "sequentially";
+        async -> "in parallel"
+    end,
     io:format(
-        "START TEST For ~p loops with ~pms interval~n"
-        "Starting ~p connections, ~p channels, ~p queues and ~p consumers~n"
-        "witing for ~p for each consumer~n",
-        [Loops, Interval, Nc, Nch, Nq, Ncon, Sleep]),
-    ConnectionParams = case ConnectionType of
-        direct  -> #amqp_params_direct{node = Node};
-        network -> #amqp_params_network{}
-    end,
-    TestFun = fun() ->
-        start_test(Loops, Interval, Sleep, Mode, ConnectionParams, Nc, Nch, Nq, Ncon)
-    end,
-    Raw = case ReportMemory of
-        true  ->
-            with_memory(Node, round(Interval * Loops / 10), TestFun);
-        false ->
-            TestFun()
-    end,
+        "START TEST For ~p runs ~s with ~p ms interval~n"
+        "Starting ~p connections x ~p channels x ~p queues x ~p consumers~n"
+        "waiting for ~p for each run~n"
+        "Connection type: ~p~n",
+        [Runs, SyncMsg, Interval,
+        Connections, Channels, Queues, Consumers,
+        Sleep,
+        ConnectionType]),
+
+    Raw = start_test(Config),
     io:format("END TEST~n"),
 
-    Avg = lists:sum(Raw) / Loops,
+    Avg = lists:sum(Raw) / Runs,
     Sorted = lists:sort(Raw),
 
-    Mean = lists:nth(round(0.5 * Loops), Sorted),
-    Per75 = lists:nth(round(0.75 * Loops), Sorted),
-    Per90 = lists:nth(round(0.9 * Loops), Sorted),
-    Per95 = lists:nth(round(0.95 * Loops), Sorted),
+    Mean = lists:nth(round(0.5 * Runs), Sorted),
+    Per75 = lists:nth(round(0.75 * Runs), Sorted),
+    Per90 = lists:nth(round(0.9 * Runs), Sorted),
+    Per95 = lists:nth(round(0.95 * Runs), Sorted),
     Max = lists:max(Sorted),
     Min = lists:min(Sorted),
 
@@ -99,32 +105,35 @@ with_stats(Node, ReportMemory, Loops, Interval, Sleep, Mode, ConnectionType, Nc,
      {min, Min}],
     io:format("STATS ~p~n", [Stats]).
 
-with_memory(undefined, _, TestFun) -> TestFun();
-with_memory(Node, Time, TestFun) ->
-    {ok, MemInterval} = timer:apply_interval(
-        Time, rabbit_connection_churn, report_memory, [Node]),
-    Result = TestFun(),
-    {ok, cancel} = timer:cancel(MemInterval),
-    Result.
-
-report_memory(Node) ->
-    io:format("MEMORY ~p~n", [rpc:call(Node, rabbit_vm, memory, [])]),
-    io:format("ETS_TABLES ~p~n", [rpc:call(Node, rabbit_vm, ets_tables_memory, [all])]).
-
-start_test(Loops, Interval, Sleep, Mode, ConnectionParams, Nc, Nch, Nq, Ncon) ->
-    Pids = n_items(Loops,
+start_test(#{node := Node,
+             runs := Runs,
+             interval := Interval,
+             sleep := Sleep,
+             sync_mode := SyncMode,
+             connection_type := ConnectionType,
+             connections := NConnections,
+             channels := NChannels,
+             queues := NQueues,
+             consumers := NConsumers,
+             host := Host,
+             port := Port }) ->
+    ConnectionParams = case ConnectionType of
+        direct  -> #amqp_params_direct{node = Node};
+        network -> #amqp_params_network{host = Host, port = Port}
+    end,
+    Pids = n_items(Runs,
         fun() ->
             Fun = fun() ->
-                Conns = open_n_connections(Nc, ConnectionParams),
+                Conns = open_n_connections(NConnections, ConnectionParams),
                 ConnChannels = lists:map(
                     fun(Conn) ->
-                        Channels = open_n_channels(Nch, Conn),
+                        Channels = open_n_channels(NChannels, Conn),
                         ChannelQueues = lists:map(
                             fun(Chan) ->
-                                Queues = create_n_queues(Nq, Chan),
+                                Queues = create_n_queues(NQueues, Chan),
                                 Conss = lists:map(
                                     fun(Q) ->
-                                        create_n_consumers(Ncon, Chan, Q)
+                                        create_n_consumers(NConsumers, Chan, Q)
                                     end,
                                     Queues),
                                 {Chan, Queues, Conss}
@@ -144,7 +153,7 @@ start_test(Loops, Interval, Sleep, Mode, ConnectionParams, Nc, Nch, Nq, Ncon) ->
                                         close_consumers(select_some(Cons), Chan)
                                     end,
                                     Conss),
-                                
+
                                 delete_queues(Queues, Chan)
                             end,
                             ChannelQueues),
@@ -158,7 +167,7 @@ start_test(Loops, Interval, Sleep, Mode, ConnectionParams, Nc, Nch, Nq, Ncon) ->
                 close_connections(Conns)
             end,
             Self = self(),
-            case Mode of
+            case SyncMode of
                 async ->
                     Pid = spawn_link(fun() ->
                         Self ! {self(), timer:tc(Fun)},
