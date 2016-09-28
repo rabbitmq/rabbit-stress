@@ -1,8 +1,6 @@
-PROJECT = rabbit_consumer_stress
+PROJECT = rabbit_stress
 PROJECT_DESCRIPTION = Rabbitmq consumer stress test
 PROJECT_VERSION = 0.0.1
-
-ESCRIPT_NAME=rabbit_stress
 
 DEPS = amqp_client getopt gun
 
