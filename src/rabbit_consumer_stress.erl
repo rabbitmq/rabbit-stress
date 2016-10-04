@@ -17,7 +17,11 @@
     {report_memory, $M, "report_memory", {boolean, false}, "Report memory breakdown during run"},
     {self_node_name, $N, "self_node_name", {atom, consimer_test}, "Name of the test node."},
     {host, $H, "host", {string, "localhost"}, "Host to connect to"},
-    {port, $P, "port", {integer, 5672}, "Port to connect to"}
+    {port, $P, "port", {integer, 5672}, "Port to connect to"},
+    {producers, $p, "producers", {integer, 1}, "Number of producers"},
+    {publish_interval, $I, "publish_interval", {integer, 500}, "Interval to wait between publishes"},
+    {consume_interval, $K, "consume_interval", {integer, 500}, "Interval to wait between consumes"},
+    {verbose, $V, "verbose", {boolean, false}, "Verbose memory report"}
     ]).
 
 main(["-h"]) ->
@@ -47,6 +51,10 @@ run_test(Options) ->
     SelfNodeName = proplists:get_value(self_node_name, Options),
     Host = proplists:get_value(host, Options),
     Port = proplists:get_value(port, Options),
+    Producers = proplists:get_value(producers, Options),
+    PublishInterval = proplists:get_value(publish_interval, Options),
+    ConsumeInterval = proplists:get_value(consume_interval, Options),
+    Verbose = proplists:get_value(verbose, Options),
     rabbit_stress:start_distribution(SelfNodeName),
     case {Type, Node} of
         {direct, undefined} ->
@@ -67,12 +75,15 @@ run_test(Options) ->
                         queues => Queues,
                         consumers => Consumers,
                         host => Host,
-                        port => Port
+                        port => Port,
+                        producers => Producers,
+                        publish_interval => PublishInterval,
+                        consume_interval => ConsumeInterval
                     })
             end,
             case ReportMemory of
                 true  ->
-                    rabbit_stress:with_memory(Node, round(Interval * Runs / 2), TestFun);
+                    rabbit_stress:with_memory(Node, round(Interval * Runs / 2), TestFun, Verbose);
                 false ->
                     TestFun()
             end

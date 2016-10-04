@@ -13,6 +13,7 @@ open_n_channels(Count, Connection) ->
     n_items(Count,
         fun() ->
             {ok, Ch} = amqp_connection:open_channel(Connection),
+            amqp_channel:call(Ch, #'basic.qos'{prefetch_count = 1}),
             Ch
         end).
 
@@ -26,13 +27,29 @@ create_n_queues(Count, Channel) ->
             QueueName
         end).
 
-create_n_consumers(Count, Channel, QueueName) ->
+create_n_consumers(Count, Channel, QueueName, ConsumeInterval) ->
     n_items(Count,
         fun() ->
+            Pid = spawn_link(fun() -> consumer_loop(Channel, ConsumeInterval) end),
+            
             #'basic.consume_ok'{consumer_tag = Tag} =
-                amqp_channel:call(Channel, #'basic.consume'{queue = QueueName}),
+                amqp_channel:subscribe(Channel,
+                                       #'basic.consume'{queue = QueueName},
+                                       Pid),
             Tag
         end).
+
+consumer_loop(Channel, ConsumeInterval) ->
+    timer:sleep(ConsumeInterval),
+    receive
+        #'basic.consume_ok'{} ->
+          consumer_loop(Channel, ConsumeInterval);
+        #'basic.cancel_ok'{} ->
+          ok;
+        {#'basic.deliver'{delivery_tag = DTag}, _Content} ->
+          amqp_channel:cast(Channel, #'basic.ack'{delivery_tag = DTag}),
+          consumer_loop(Channel, ConsumeInterval)
+    end.
 
 close_consumers(ConsumerTags, Channel) ->
     lists:map(
@@ -115,6 +132,9 @@ start_test(#{node := Node,
              channels := NChannels,
              queues := NQueues,
              consumers := NConsumers,
+             producers := NProducers,
+             publish_interval := PublishInterval,
+             consume_interval := ConsumeInterval,
              host := Host,
              port := Port }) ->
     ConnectionParams = case ConnectionType of
@@ -133,7 +153,9 @@ start_test(#{node := Node,
                                 Queues = create_n_queues(NQueues, Chan),
                                 Conss = lists:map(
                                     fun(Q) ->
-                                        create_n_consumers(NConsumers, Chan, Q)
+                                        Producers = create_n_producers(NProducers, Chan, Q, PublishInterval),
+                                        Consumers = create_n_consumers(NConsumers, Chan, Q, ConsumeInterval),
+                                        {Producers, Consumers}
                                     end,
                                     Queues),
                                 {Chan, Queues, Conss}
@@ -149,7 +171,8 @@ start_test(#{node := Node,
                         lists:map(
                             fun({Chan, Queues, Conss}) ->
                                 lists:map(
-                                    fun(Cons) ->
+                                    fun({Prod, Cons}) ->
+                                        stop_producers(Prod),
                                         close_consumers(select_some(Cons), Chan)
                                     end,
                                     Conss),
@@ -193,6 +216,30 @@ start_test(#{node := Node,
         end,
         Pids).
 
+create_n_producers(N, Chan, Queue, Interval) ->
+    n_items(N, fun() ->
+        spawn_link(fun() ->
+            send_message(Chan, Queue),
+            producer_loop(Chan, Queue, Interval)
+        end)
+    end).
+
+producer_loop(Chan, Queue, Interval) ->
+    receive
+        stop -> ok
+    after Interval ->
+        send_message(Chan, Queue),
+        producer_loop(Chan, Queue, Interval)
+    end.
+
+send_message(Chan, Queue) ->
+    Msg = list_to_binary("message" ++ erlang:ref_to_list(make_ref())),
+    amqp_channel:call(Chan,
+                      #'basic.publish'{routing_key = Queue},
+                      #amqp_msg{payload = Msg}).
+
+stop_producers(Prods) ->
+    lists:map(fun(P) -> P ! stop end, Prods).
 
 n_items(Count, Fn) ->
     lists:map(fun(_) -> Fn() end,

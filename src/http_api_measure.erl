@@ -2,6 +2,9 @@
 
 -compile(export_all).
 
+% Very long http timeout
+-define(TIMEOUT, 1000000).
+
 prepare() ->
     inets:start(),
     application:ensure_all_started(gun).
@@ -61,11 +64,11 @@ request_loop({Host, Port, Path} = Req, Pid) ->
             gun:await_up(ConnPid),
             {Time, _} = timer:tc(fun() ->
                 StreamRef = gun:get(ConnPid, Path, [{<<"authorization">>, "Basic Z3Vlc3Q6Z3Vlc3Q="}]),
-                case gun:await(ConnPid, StreamRef, 100000) of
+                case gun:await(ConnPid, StreamRef, ?TIMEOUT) of
                         {response, fin, _Status, _Headers} ->
                                 no_data;
                         {response, nofin, _Status, _Headers} ->
-                                {ok, _} = gun:await_body(ConnPid, StreamRef, 100000)
+                                {ok, _} = gun:await_body(ConnPid, StreamRef, ?TIMEOUT)
                 end,
                 gun:flush(StreamRef),
                 gun:cancel(ConnPid, StreamRef)
