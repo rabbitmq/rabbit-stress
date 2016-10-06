@@ -16,6 +16,12 @@ main(Args) ->
 script_name() ->
     filename:basename(escript:script_name(), ".escript").
 
+start_distribution(undefined) ->
+    Candidate = "stress_test_" ++ integer_to_list(rand:uniform(100000)),
+    case start_distribution(list_to_atom(Candidate)) of
+        {ok, _} = OK -> OK;
+        _            -> start_distribution(undefined)
+    end;
 start_distribution(NodeName) ->
     net_kernel:start([NodeName, shortnames]).
 

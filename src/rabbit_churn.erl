@@ -47,7 +47,7 @@ consumer_loop(Channel, ConsumeInterval) ->
         #'basic.cancel_ok'{} ->
           ok;
         {#'basic.deliver'{delivery_tag = DTag}, _Content} ->
-          amqp_channel:cast(Channel, #'basic.ack'{delivery_tag = DTag}),
+          amqp_channel:call(Channel, #'basic.ack'{delivery_tag = DTag}),
           consumer_loop(Channel, ConsumeInterval)
     end.
 
@@ -74,6 +74,7 @@ close_connections(Connections) ->
 
 generate_queue_name(Channel) ->
     list_to_binary("queue" ++
+                   atom_to_list(node()) ++ 
                    pid_to_list(Channel) ++
                    integer_to_list(rand:uniform(1000000))).
 
@@ -142,7 +143,7 @@ start_test(#{node := Node,
         network -> #amqp_params_network{host = Host, port = Port}
     end,
     Pids = n_items(Runs,
-        fun() ->
+        fun(Index) ->
             Fun = fun() ->
                 Conns = open_n_connections(NConnections, ConnectionParams),
                 ConnChannels = lists:map(
@@ -194,13 +195,13 @@ start_test(#{node := Node,
                 async ->
                     Pid = spawn_link(fun() ->
                         Self ! {self(), timer:tc(Fun)},
-                        io:format(".")
+                        io:format(".~p.", [Index])
                     end),
                     timer:sleep(Interval),
                     Pid;
                 sync  ->
                     Self ! {none, timer:tc(Fun)},
-                    io:format("."),
+                    io:format("..~p..", [Index]),
                     none
             end
         end),
@@ -242,8 +243,13 @@ stop_producers(Prods) ->
     lists:map(fun(P) -> P ! stop end, Prods).
 
 n_items(Count, Fn) ->
-    lists:map(fun(_) -> Fn() end,
-              lists:seq(1, Count)).
+    lists:map(fun(Index) ->
+        case erlang:fun_info(Fn, arity) of
+            {arity, 0} -> Fn();
+            {arity, 1} -> Fn(Index)
+        end
+    end,
+    lists:seq(1, Count)).
 
 select_some(List) ->
     lists:filter(fun(_) -> rand:uniform() > 0.5 end, List).

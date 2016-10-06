@@ -15,13 +15,14 @@
     {sleep, $s, "sleep", {integer, 2000}, "Time to keep connection alive"},
     {node, $n, "node", atom, "Node name of tested broker node."},
     {report_memory, $M, "report_memory", {boolean, false}, "Report memory breakdown during run"},
-    {self_node_name, $N, "self_node_name", {atom, consimer_test}, "Name of the test node."},
+    {self_node_name, $N, "self_node_name", {atom, undefined}, "Name of the test node."},
     {host, $H, "host", {string, "localhost"}, "Host to connect to"},
     {port, $P, "port", {integer, 5672}, "Port to connect to"},
     {producers, $p, "producers", {integer, 1}, "Number of producers"},
     {publish_interval, $I, "publish_interval", {integer, 500}, "Interval to wait between publishes"},
     {consume_interval, $K, "consume_interval", {integer, 500}, "Interval to wait between consumes"},
-    {verbose, $V, "verbose", {boolean, false}, "Verbose memory report"}
+    {verbose, $V, "verbose", {boolean, false}, "Verbose memory report"},
+    {report_memory_interval, $R, "report_memory_interval", {integer, 2000}, "Memory report interval"}
     ]).
 
 main(["-h"]) ->
@@ -55,6 +56,7 @@ run_test(Options) ->
     PublishInterval = proplists:get_value(publish_interval, Options),
     ConsumeInterval = proplists:get_value(consume_interval, Options),
     Verbose = proplists:get_value(verbose, Options),
+    MemInterval = proplists:get_value(report_memory_interval, Options),
     rabbit_stress:start_distribution(SelfNodeName),
     case {Type, Node} of
         {direct, undefined} ->
@@ -83,7 +85,7 @@ run_test(Options) ->
             end,
             case ReportMemory of
                 true  ->
-                    rabbit_stress:with_memory(Node, round(Interval * Runs / 2), TestFun, Verbose);
+                    rabbit_stress:with_memory(Node, MemInterval, TestFun, Verbose);
                 false ->
                     TestFun()
             end
