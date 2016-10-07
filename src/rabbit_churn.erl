@@ -22,8 +22,7 @@ create_n_queues(Count, Channel) ->
         fun() ->
             QueueName = generate_queue_name(Channel),
             #'queue.declare_ok'{queue = QueueName} =
-                amqp_channel:call(Channel, #'queue.declare'{queue = QueueName,
-                                                            exclusive = true}),
+                amqp_channel:call(Channel, #'queue.declare'{queue = QueueName}),
             QueueName
         end).
 
@@ -74,9 +73,7 @@ close_connections(Connections) ->
 
 generate_queue_name(Channel) ->
     list_to_binary("queue" ++
-                   atom_to_list(node()) ++ 
-                   pid_to_list(Channel) ++
-                   integer_to_list(rand:uniform(1000000))).
+                   integer_to_list(rand:uniform(10000))).
 
 with_stats(#{runs := Runs,
              interval := Interval,
