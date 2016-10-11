@@ -50,17 +50,20 @@ consumer_loop(Channel, ConsumeInterval) ->
           consumer_loop(Channel, ConsumeInterval)
     end.
 
-close_consumers(ConsumerTags, Channel) ->
+close_consumers(ConsumerTags, _Channel) ->
     lists:map(
-        fun(Tag) ->
-            amqp_channel:call(Channel, #'basic.cancel'{consumer_tag = Tag})
+        fun(_Tag) ->
+ok
+            %amqp_channel:call(Channel, #'basic.cancel'{consumer_tag = Tag})
         end,
         ConsumerTags).
 
 delete_queues(Queues, Channel) ->
     lists:map(
         fun(Q) ->
-            amqp_channel:call(Channel, #'queue.delete'{queue = Q})
+            try amqp_channel:call(Channel, #'queue.purge'{queue = Q})
+	    catch _:_ -> ok
+            end
         end,
         Queues).
 
@@ -71,9 +74,9 @@ close_connections(Connections) ->
         end,
         Connections).
 
-generate_queue_name(Channel) ->
+generate_queue_name(_Channel) ->
     list_to_binary("queue" ++
-                   integer_to_list(rand:uniform(10000))).
+                   integer_to_list(rand:uniform(1000))).
 
 with_stats(#{runs := Runs,
              interval := Interval,
@@ -174,7 +177,6 @@ start_test(#{node := Node,
                                         close_consumers(select_some(Cons), Chan)
                                     end,
                                     Conss),
-
                                 delete_queues(Queues, Chan)
                             end,
                             ChannelQueues),
@@ -249,6 +251,9 @@ n_items(Count, Fn) ->
     lists:seq(1, Count)).
 
 select_some(List) ->
-    lists:filter(fun(_) -> rand:uniform() > 0.5 end, List).
+    select_some(List, 0.5).
+
+select_some(List, Fraction) ->
+    lists:filter(fun(_) -> rand:uniform() > Fraction end, List).
 
 
