@@ -30,7 +30,7 @@ create_n_consumers(Count, Channel, QueueName, ConsumeInterval) ->
     n_items(Count,
         fun() ->
             Pid = spawn_link(fun() -> consumer_loop(Channel, ConsumeInterval) end),
-            
+
             #'basic.consume_ok'{consumer_tag = Tag} =
                 amqp_channel:subscribe(Channel,
                                        #'basic.consume'{queue = QueueName},
@@ -71,7 +71,7 @@ close_connections(Connections) ->
         end,
         Connections).
 
-generate_queue_name(Channel) ->
+generate_queue_name(_Channel) ->
     list_to_binary("queue" ++
                    integer_to_list(rand:uniform(10000))).
 
